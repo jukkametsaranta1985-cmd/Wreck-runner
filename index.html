@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#101611">
+<title>Wreck Runner 0.5</title>
+<style>
+:root{--orange:#e7a02b;--dark:#11130f;--panel:#1b1b17;--metal:#5e5b50}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#0f1510;font-family:Arial,Helvetica,sans-serif;touch-action:none;-webkit-user-select:none;user-select:none}
+canvas{display:block;width:100%;height:100%}
+#hud{position:fixed;z-index:6;top:max(10px,env(safe-area-inset-top));left:12px;right:12px;display:flex;align-items:center;gap:10px;color:white;text-shadow:2px 2px 3px #000;font-weight:900;pointer-events:none}
+#hud .grow{flex:1}
+#pauseBtn{pointer-events:auto;border:1px solid #ffffff40;background:#111a;color:white;border-radius:9px;padding:6px 10px;font-size:18px}
+.badge{background:#0007;border:1px solid #ffffff20;border-radius:10px;padding:6px 9px}
+.overlay{position:fixed;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;background:#000a;padding:12px}
+.hidden{display:none!important}
+.card{width:min(470px,94vw);max-height:94vh;overflow:auto;background:linear-gradient(#2a2923,#12120f);border:2px solid #77705f;border-radius:18px;color:#fff;box-shadow:0 18px 70px #000}
+.cover{height:min(46vh,390px);position:relative;overflow:hidden;background:#111}
+.cover img{width:100%;height:100%;object-fit:cover;object-position:center 20%;display:block}
+.cover:after{content:"";position:absolute;inset:0;background:linear-gradient(transparent 48%,#111)}
+.logo{position:absolute;left:16px;bottom:18px;z-index:2;text-align:left;font-size:38px;line-height:.85;font-weight:900;text-shadow:3px 3px #000;letter-spacing:1px}
+.logo span{color:var(--orange)}
+.body{padding:16px 18px 20px;text-align:center}
+button{border:0;border-radius:10px;padding:13px 14px;font-size:18px;font-weight:900}
+.primary{width:100%;background:var(--orange);color:#111}
+.secondary{width:100%;margin-top:8px;background:#45443d;color:white}
+.small{font-size:12px;color:#bbb}
+#shopGrid{display:grid;gap:8px;margin-top:10px}
+.upgrade{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;text-align:left;padding:10px;background:#0d0d0bcc;border:1px solid #ffffff16;border-radius:10px}
+.upgrade b{display:block}.upgrade small{color:#aaa}
+.buy{background:#779d34;color:#111;padding:9px 10px;font-size:14px}
+.buy:disabled{opacity:.45}
+#touch{position:fixed;inset:0;z-index:4;pointer-events:none}
+.zone{position:absolute;bottom:0;height:38vh;pointer-events:auto}
+#left{left:0;width:28%}#right{right:0;width:28%}#jump{left:28%;width:44%}
+#jumpHint{position:fixed;left:50%;bottom:max(17px,env(safe-area-inset-bottom));transform:translateX(-50%);width:82px;height:82px;border-radius:50%;border:3px solid #fff3;background:#fff1;z-index:3;pointer-events:none}
+#toast{position:fixed;left:50%;top:70px;transform:translateX(-50%);z-index:20;background:#111d;color:#fff;padding:9px 13px;border-radius:9px;font-weight:bold;opacity:0;transition:.2s}
+@media(max-height:520px){.cover{height:45vh}.logo{font-size:30px}.body{padding:10px 16px 14px}}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="hud">
+  <span id="distance" class="badge">MATKA 0 m</span>
+  <span id="shieldHud" class="badge hidden">🛡️</span>
+  <span class="grow"></span>
+  <span id="runScrap" class="badge">⚙ 0</span>
+  <button id="pauseBtn">Ⅱ</button>
+</div>
+
+<div id="menu" class="overlay">
+  <div class="card">
+    <div class="cover">
+      <img src="wreck_runner_cover.jpg" alt="Wreck Runner">
+      <div class="logo">WRECK<br><span>RUNNER</span></div>
+    </div>
+    <div class="body">
+      <button id="startBtn" class="primary">PELAA</button>
+      <button id="shopBtn" class="secondary">UPGRADET • ⚙ <span id="walletMenu">0</span></button>
+      <p class="small">Keskeltä hyppy • vasen/oikea reuna ohjaa • peli kiihtyy vähitellen</p>
+    </div>
+  </div>
+</div>
+
+<div id="shop" class="overlay hidden">
+  <div class="card">
+    <div class="body">
+      <h2 style="margin-top:0">UPGRADET</h2>
+      <p>Romupankki: ⚙ <b id="walletShop">0</b></p>
+      <div id="shopGrid"></div>
+      <button id="shopBack" class="secondary">TAKAISIN</button>
+    </div>
+  </div>
+</div>
+
+<div id="over" class="overlay hidden">
+  <div class="card">
+    <div class="body">
+      <h1 style="margin:0;font-size:44px">RUN <span style="color:var(--orange)">OVER</span></h1>
+      <p id="result"></p>
+      <button id="againBtn" class="primary">YRITÄ UUDELLEEN</button>
+      <button id="overShopBtn" class="secondary">UPGRADET</button>
+      <button id="menuBtn" class="secondary">VALIKKOON</button>
+    </div>
+  </div>
+</div>
+
+<div id="paused" class="overlay hidden">
+  <div class="card"><div class="body">
+    <h2>TAUKO</h2>
+    <button id="resumeBtn" class="primary">JATKA</button>
+    <button id="pauseMenuBtn" class="secondary">VALIKKOON</button>
+  </div></div>
+</div>
+
+<div id="touch"><div id="left" class="zone"></div><div id="jump" class="zone"></div><div id="right" class="zone"></div></div>
+<div id="jumpHint"></div>
+<div id="toast"></div>
+
+<script>
+(() => {
+const $=id=>document.getElementById(id);
+const c=$('game'),ctx=c.getContext('2d');
+let W=0,H=0,DPR=1,last=0,state='menu',world=0,speed=300,runScrap=0,startGrace=0,shake=0;
+let p=null,plats=[],items=[],hazards=[],drones=[],powers=[],particles=[],keys={left:false,right:false};
+
+const save=JSON.parse(localStorage.getItem('wreckRunner05')||'{}');
+let wallet=save.wallet||0,best=save.best||0;
+let upgrades=Object.assign({magnet:0,shield:0,value:0,jump:0},save.upgrades||{});
+const UPG={
+ magnet:{name:'MAGNEETTI',desc:'Vetää romua kauempaa.',base:50,max:4},
+ shield:{name:'KILPI',desc:'Aloita juoksu yhdellä suojalla.',base:80,max:3},
+ value:{name:'ROMUN ARVO',desc:'Kerätty romu on arvokkaampaa.',base:100,max:5},
+ jump:{name:'JOUSTOSAAPPAAT',desc:'Hyppy nousee hieman korkeammalle.',base:70,max:4}
+};
+function persist(){localStorage.setItem('wreckRunner05',JSON.stringify({wallet,best,upgrades}))}
+function resize(){DPR=Math.min(2,devicePixelRatio||1);W=innerWidth;H=innerHeight;c.width=W*DPR;c.height=H*DPR;c.style.width=W+'px';c.style.height=H+'px';ctx.setTransform(DPR,0,0,DPR,0,0)}
+addEventListener('resize',resize);resize();
+
+function audio(freq=300,d=.05,type='square',vol=.025){try{const A=audio.ctx||(audio.ctx=new (AudioContext||webkitAudioContext)());const o=A.createOscillator(),g=A.createGain();o.type=type;o.frequency.value=freq;g.gain.value=vol;o.connect(g);g.connect(A.destination);o.start();g.gain.exponentialRampToValueAtTime(.0001,A.currentTime+d);o.stop(A.currentTime+d)}catch(e){}}
+function toast(t){const el=$('toast');el.textContent=t;el.style.opacity=1;clearTimeout(toast.t);toast.t=setTimeout(()=>el.style.opacity=0,1200)}
+function bank(){wallet+=runScrap*(1+upgrades.value);persist()}
+
+function reset(){
+  world=0;speed=300;runScrap=0;startGrace=2.0;shake=0;
+  p={x:Math.max(80,W*.18),y:H-165,w:46,h:66,vy:0,vx:0,on:false,anim:0,shield:upgrades.shield>0?1:0};
+  plats=[{x:-300,y:H-78,w:Math.max(2200,W*3.5),h:28,start:true}];
+  items=[];hazards=[];drones=[];powers=[];particles=[];
+  for(let i=0;i<5;i++)items.push({x:W*.62+i*90,y:H-120,r:11});
+  while(plats.at(-1).x+plats.at(-1).w<W+3200)spawnChunk();
+  state='play';hideAll();$('shieldHud').classList.toggle('hidden',!p.shield);
+}
+function spawnChunk(){
+  const q=plats.at(-1),gap=55+Math.random()*90,y=Math.max(145,H-105-Math.random()*165),w=180+Math.random()*280,x=q.x+q.w+gap;
+  plats.push({x,y,w,h:26});
+  const n=1+(Math.random()<.42?1:0);
+  for(let i=0;i<n;i++)if(Math.random()<.93)items.push({x:x+w*(.34+i*.24),y:y-34,r:11});
+  if(Math.random()<.34)hazards.push({x:x+w*.70,y:y-34,w:34,h:34,type:Math.random()<.55?'barrel':'spikes'});
+  if(Math.random()<.16&&world>900)drones.push({x:x+w*.55,y:y-85,w:42,h:24,phase:Math.random()*6.28});
+  if(Math.random()<.08)powers.push({x:x+w*.48,y:y-55,type:Math.random()<.5?'shield':'boost'});
+}
+function hideAll(){['menu','shop','over','paused'].forEach(id=>$(id).classList.add('hidden'))}
+function jump(){
+ if(state==='play'&&p&&p.on){p.vy=-(760+upgrades.jump*28);p.on=false;burst(p.x+22,p.y+p.h,8,'#c9b58a');audio(210,.07,'square')}
+}
+function burst(x,y,n,color='#e7a02b'){for(let i=0;i<n;i++)particles.push({x,y,vx:(Math.random()-.5)*170,vy:-Math.random()*180,life:.5,color})}
+function hit(){
+ if(p.shield){p.shield=0;$('shieldHud').classList.add('hidden');shake=10;toast('KILPI PELASTI!');audio(110,.18,'sawtooth',.035);return}
+ end()
+}
+function end(){
+ if(state!=='play')return;
+ state='over';best=Math.max(best,Math.floor(world/10));bank();
+ $('result').innerHTML=`Matka <b>${Math.floor(world/10)} m</b><br>Keräsit ⚙ ${runScrap} → pankkiin ⚙ ${runScrap*(1+upgrades.value)}<br>Ennätys ${best} m`;
+ updateWallet();$('over').classList.remove('hidden');audio(90,.35,'sawtooth',.035)
+}
+function update(dt){
+ if(state!=='play'||!p)return;
+ p.anim+=dt*12;
+ if(startGrace>0)startGrace-=dt;else{speed=Math.min(760,speed+dt*5);world+=speed*dt}
+ while(plats.at(-1).x+plats.at(-1).w<world+W+1600)spawnChunk();
+
+ p.vy+=1900*dt;p.y+=p.vy*dt;
+ const target=(keys.right?240:0)-(keys.left?240:0);
+ p.vx+=(target-p.vx)*Math.min(1,dt*9);p.x+=p.vx*dt;
+ p.x=Math.max(18,Math.min(W-p.w-18,p.x));p.on=false;
+
+ for(const q of plats){const sx=q.x-world;if(p.x+p.w>sx&&p.x<sx+q.w&&p.y+p.h<=q.y+15&&p.y+p.h+p.vy*dt>=q.y){p.y=q.y-p.h;p.vy=0;p.on=true}}
+
+ const magnet=36+upgrades.magnet*34;
+ for(let i=items.length-1;i>=0;i--){
+   const q=items[i],sx=q.x-world,dx=p.x+23-sx,dy=p.y+30-q.y,dist=Math.hypot(dx,dy);
+   if(dist<magnet&&dist>1){q.x+=dx/dist*220*dt;q.y+=dy/dist*220*dt}
+   if(dist<35){runScrap++;items.splice(i,1);burst(sx,q.y,9);audio(680,.045,'square',.018)}
+ }
+ for(const q of hazards){const sx=q.x-world;if(p.x<sx+q.w&&p.x+p.w>sx&&p.y<q.y+q.h&&p.y+p.h>q.y){q.x=-999999;hit()}}
+ for(const q of drones){
+   q.phase+=dt*3;q.y+=Math.sin(q.phase)*18*dt;
+   const sx=q.x-world;
+   if(p.x<sx+q.w&&p.x+p.w>sx&&p.y<q.y+q.h&&p.y+p.h>q.y){q.x=-999999;hit()}
+ }
+ for(let i=powers.length-1;i>=0;i--){
+   const q=powers[i],sx=q.x-world;
+   if(Math.hypot(p.x+23-sx,p.y+28-q.y)<38){
+     if(q.type==='shield'){p.shield=1;$('shieldHud').classList.remove('hidden');toast('KILPI!')}
+     else{world+=110;toast('BOOST!');}
+     powers.splice(i,1);audio(900,.12,'sine',.025)
+   }
+ }
+ if(p.y>H+110)end();
+ for(let i=particles.length-1;i>=0;i--){const q=particles[i];q.life-=dt;q.x+=q.vx*dt;q.y+=q.vy*dt;q.vy+=550*dt;if(q.life<=0)particles.splice(i,1)}
+ shake=Math.max(0,shake-dt*35);
+}
+function rr(x,y,w,h,r,color){ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fillStyle=color;ctx.fill()}
+function background(){
+ const gr=ctx.createLinearGradient(0,0,0,H);gr.addColorStop(0,'#172119');gr.addColorStop(.55,'#454131');gr.addColorStop(1,'#72583a');ctx.fillStyle=gr;ctx.fillRect(0,0,W,H);
+ ctx.fillStyle='#202a22';
+ for(let i=0;i<20;i++){const sx=((i*160-world*.10)%(W+220))-100,hh=70+(i%6)*28;ctx.fillRect(sx,H-120-hh,80,hh+120);if(i%3===0)ctx.fillRect(sx+55,H-120-hh-45,6,45)}
+ ctx.strokeStyle='#20251f';ctx.lineWidth=4;
+ for(let i=0;i<4;i++){const sx=((i*390-world*.06)%(W+550))-120;ctx.beginPath();ctx.moveTo(sx,H-170);ctx.lineTo(sx,H-360);ctx.lineTo(sx+130,H-360);ctx.stroke()}
+ ctx.fillStyle='#1115';for(let i=0;i<5;i++){const sx=((i*280-world*.045)%(W+360))-120;ctx.beginPath();ctx.arc(sx,H-285,35,0,7);ctx.arc(sx+30,H-330,48,0,7);ctx.fill()}
+}
+function platform(q){const sx=q.x-world;if(sx<-500||sx>W+500)return;ctx.fillStyle=q.start?'#3b3931':'#514e44';ctx.fillRect(sx,q.y,q.w,q.h);ctx.fillStyle='#b78b4c';ctx.fillRect(sx,q.y,q.w,5);ctx.fillStyle='#252521';for(let xx=sx+18;xx<sx+q.w-10;xx+=45)ctx.fillRect(xx,q.y+12,21,5)}
+function gear(x,y,r){ctx.save();ctx.translate(x,y);ctx.fillStyle='#e7a02b';for(let i=0;i<8;i++){ctx.rotate(Math.PI/4);ctx.fillRect(r*.72,-3,r*.40,6)}ctx.beginPath();ctx.arc(0,0,r*.78,0,7);ctx.fill();ctx.fillStyle='#4a3b21';ctx.beginPath();ctx.arc(0,0,r*.3,0,7);ctx.fill();ctx.restore()}
+function obstacle(q){const sx=q.x-world;if(q.type==='barrel'){rr(sx,q.y,q.w,q.h,5,'#9d3529');ctx.fillStyle='#e4772e';ctx.fillRect(sx+3,q.y+7,q.w-6,5);ctx.fillRect(sx+3,q.y+22,q.w-6,5);ctx.fillStyle='#20201d';ctx.fillRect(sx+14,q.y+3,6,q.h-6)}else{ctx.fillStyle='#d5c29d';for(let i=0;i<3;i++){const xx=sx+i*11;ctx.beginPath();ctx.moveTo(xx,q.y+q.h);ctx.lineTo(xx+6,q.y);ctx.lineTo(xx+12,q.y+q.h);ctx.fill()}}}
+function drone(q){const sx=q.x-world;rr(sx,q.y,q.w,q.h,8,'#30332f');ctx.fillStyle='#a42f27';ctx.beginPath();ctx.arc(sx+10,q.y+12,5,0,7);ctx.fill();ctx.strokeStyle='#76786e';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(sx+8,q.y+2);ctx.lineTo(sx-6,q.y-7);ctx.moveTo(sx+34,q.y+2);ctx.lineTo(sx+48,q.y-7);ctx.stroke()}
+function power(q){const sx=q.x-world;ctx.fillStyle=q.type==='shield'?'#7db4d2':'#f2c133';ctx.beginPath();ctx.arc(sx,q.y,14,0,7);ctx.fill();ctx.fillStyle='#fff';ctx.font='bold 14px Arial';ctx.textAlign='center';ctx.fillText(q.type==='shield'?'S':'⚡',sx,q.y+5);ctx.textAlign='left'}
+function player(){
+ if(!p)return;const x=p.x,y=p.y,bob=p.on?Math.sin(p.anim)*1.7:0,swing=p.on?Math.sin(p.anim)*6:0;ctx.save();ctx.translate(0,bob);
+ ctx.fillStyle='#0005';ctx.beginPath();ctx.ellipse(x+23,y+69,28,7,0,0,7);ctx.fill();
+ ctx.strokeStyle='#2f4458';ctx.lineWidth=11;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(x+18,y+44);ctx.lineTo(x+15+swing,y+62);ctx.stroke();ctx.beginPath();ctx.moveTo(x+30,y+44);ctx.lineTo(x+33-swing,y+62);ctx.stroke();
+ ctx.strokeStyle='#171717';ctx.lineWidth=8;ctx.beginPath();ctx.moveTo(x+11+swing,y+62);ctx.lineTo(x+21+swing,y+62);ctx.stroke();ctx.beginPath();ctx.moveTo(x+30-swing,y+62);ctx.lineTo(x+41-swing,y+62);ctx.stroke();
+ rr(x+7,y+18,33,31,6,'#171717');
+ ctx.strokeStyle='#b87959';ctx.lineWidth=10;ctx.beginPath();ctx.moveTo(x+8,y+25);ctx.lineTo(x-2,y+40+swing*.35);ctx.stroke();ctx.beginPath();ctx.moveTo(x+38,y+24);ctx.lineTo(x+49,y+38-swing*.35);ctx.stroke();
+ ctx.strokeStyle='#49352f';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x+1,y+31);ctx.lineTo(x-2,y+38);ctx.moveTo(x+44,y+29);ctx.lineTo(x+48,y+36);ctx.stroke();
+ ctx.fillStyle='#bd7d5c';ctx.beginPath();ctx.arc(x+24,y+8,14,0,7);ctx.fill();
+ ctx.fillStyle='#44332c';ctx.beginPath();ctx.moveTo(x+13,y+10);ctx.quadraticCurveTo(x+24,y+29,x+35,y+10);ctx.quadraticCurveTo(x+24,y+20,x+13,y+10);ctx.fill();
+ ctx.fillStyle='#e77b9f';ctx.beginPath();ctx.arc(x+23,y-2,13,Math.PI,0);ctx.fill();ctx.fillRect(x+10,y-3,28,7);ctx.fillRect(x+32,y+1,13,4);
+ ctx.fillStyle='#eee';ctx.font='bold 6px Arial';ctx.fillText('WRECK',x+12,y+31);ctx.fillText('RUNNER',x+10,y+38);
+ if(p.shield){ctx.strokeStyle='#8bd2ff';ctx.lineWidth=3;ctx.globalAlpha=.55+.2*Math.sin(p.anim);ctx.beginPath();ctx.arc(x+23,y+31,38,0,7);ctx.stroke();ctx.globalAlpha=1}
+ ctx.restore();
+}
+function draw(){
+ ctx.save();if(shake>0)ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);
+ background();for(const q of plats)platform(q);for(const q of items)gear(q.x-world,q.y,q.r);for(const q of hazards)obstacle(q);for(const q of drones)drone(q);for(const q of powers)power(q);player();
+ for(const q of particles){ctx.globalAlpha=Math.max(0,q.life*2);ctx.fillStyle=q.color;ctx.fillRect(q.x,q.y,5,5);ctx.globalAlpha=1}
+ ctx.restore();
+ if(state==='play'&&startGrace>0){ctx.fillStyle='#fff';ctx.globalAlpha=.8;ctx.font='bold 16px Arial';ctx.textAlign='center';ctx.fillText('VALMISTAUDU...',W/2,65);ctx.textAlign='left';ctx.globalAlpha=1}
+ $('distance').textContent='MATKA '+Math.floor(world/10)+' m';$('runScrap').textContent='⚙ '+runScrap;
+}
+function loop(t){const dt=Math.min(.033,(t-last)/1000||0);last=t;update(dt);draw();requestAnimationFrame(loop)}requestAnimationFrame(loop);
+
+function updateWallet(){$('walletMenu').textContent=wallet;$('walletShop').textContent=wallet}
+function renderShop(){
+ updateWallet();const grid=$('shopGrid');grid.innerHTML='';
+ for(const [id,u] of Object.entries(UPG)){const lvl=upgrades[id],cost=u.base*(lvl+1);const row=document.createElement('div');row.className='upgrade';
+ row.innerHTML=`<div><b>${u.name} ${lvl}/${u.max}</b><small>${u.desc}</small></div>`;
+ const b=document.createElement('button');b.className='buy';b.textContent=lvl>=u.max?'MAX':'⚙ '+cost;b.disabled=lvl>=u.max||wallet<cost;
+ b.onclick=()=>{if(wallet>=cost&&upgrades[id]<u.max){wallet-=cost;upgrades[id]++;persist();renderShop();audio(520,.08,'square');toast('UPGRADE OSTETTU')}};
+ row.appendChild(b);grid.appendChild(row)}
+}
+function openShop(){hideAll();renderShop();$('shop').classList.remove('hidden')}
+
+$('startBtn').onclick=reset;$('againBtn').onclick=reset;
+$('shopBtn').onclick=openShop;$('overShopBtn').onclick=openShop;$('shopBack').onclick=()=>{hideAll();updateWallet();$('menu').classList.remove('hidden')};
+$('menuBtn').onclick=()=>{hideAll();updateWallet();$('menu').classList.remove('hidden')};
+$('pauseBtn').onclick=()=>{if(state==='play'){state='paused';$('paused').classList.remove('hidden')}};
+$('resumeBtn').onclick=()=>{state='play';$('paused').classList.add('hidden');last=performance.now()};
+$('pauseMenuBtn').onclick=()=>{state='menu';hideAll();updateWallet();$('menu').classList.remove('hidden')};
+
+addEventListener('keydown',e=>{if(e.key===' '||e.key==='ArrowUp'){e.preventDefault();jump()}if(e.key==='ArrowLeft')keys.left=true;if(e.key==='ArrowRight')keys.right=true;if(e.key==='Escape'&&state==='play')$('pauseBtn').click()});
+addEventListener('keyup',e=>{if(e.key==='ArrowLeft')keys.left=false;if(e.key==='ArrowRight')keys.right=false});
+function hold(id,key){const el=$(id);el.addEventListener('pointerdown',e=>{e.preventDefault();keys[key]=true});['pointerup','pointercancel','pointerleave'].forEach(v=>el.addEventListener(v,e=>{e.preventDefault();keys[key]=false}))}
+hold('left','left');hold('right','right');$('jump').addEventListener('pointerdown',e=>{e.preventDefault();jump()});
+updateWallet();
+})();
+</script>
+</body>
+</html>
