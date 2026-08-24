@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#101611">
+<title>Wreck Runner 0.4</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#101611;font-family:Arial,Helvetica,sans-serif;touch-action:none;-webkit-user-select:none;user-select:none}
+canvas{display:block;width:100%;height:100%}
+#hud{position:fixed;top:max(12px,env(safe-area-inset-top));left:16px;right:16px;display:flex;justify-content:space-between;color:#fff;font-weight:900;font-size:18px;text-shadow:2px 2px 3px #000;pointer-events:none;z-index:4}
+.overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.68);z-index:8;padding:14px}
+.card{width:min(460px,94vw);max-height:94vh;overflow:hidden;border:2px solid #726b5c;border-radius:20px;background:linear-gradient(#2c2a23,#111);box-shadow:0 20px 70px #000;color:#fff;text-align:center}
+.coverWrap{position:relative;width:100%;height:min(54vh,430px);overflow:hidden;background:#111}
+.coverWrap img{width:100%;height:100%;object-fit:cover;object-position:center 24%;display:block}
+.coverShade{position:absolute;inset:0;background:linear-gradient(transparent 55%,rgba(0,0,0,.9))}
+.coverTitle{position:absolute;left:16px;bottom:14px;text-align:left;font-weight:900;font-size:34px;line-height:.88;text-shadow:3px 3px #000}
+.coverTitle span{color:#e59a28}
+.cardBody{padding:16px 20px 20px}
+button{width:100%;padding:15px;margin-top:6px;border:none;border-radius:11px;background:#e59a28;color:#111;font-size:21px;font-weight:900}
+.hidden{display:none!important}
+#touch{position:fixed;inset:0;pointer-events:none;z-index:3}
+#left,#right,#jump{position:absolute;bottom:0;height:38vh;pointer-events:auto}
+#left{left:0;width:30%}#right{right:0;width:30%}#jump{left:30%;width:40%}
+#jumpHint{position:fixed;left:50%;bottom:max(20px,env(safe-area-inset-bottom));transform:translateX(-50%);width:88px;height:88px;border-radius:50%;border:3px solid rgba(255,255,255,.23);background:rgba(255,255,255,.05);pointer-events:none;z-index:2}
+.small{font-size:12px;color:#bbb;margin:8px 0 0}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hud"><span id="distance">MATKA 0 m</span><span id="scrap">⚙ 0</span></div>
+
+<div id="menu" class="overlay">
+  <div class="card">
+    <div class="coverWrap">
+      <img src="wreck_runner_cover.jpg" alt="Wreck Runner">
+      <div class="coverShade"></div>
+      <div class="coverTitle">WRECK<br><span>RUNNER</span></div>
+    </div>
+    <div class="cardBody">
+      <button id="startBtn">PELAA</button>
+      <p class="small">Keskiosa = hyppy • alareunan reunat = liike</p>
+    </div>
+  </div>
+</div>
+
+<div id="gameover" class="overlay hidden">
+  <div class="card">
+    <div class="cardBody">
+      <h1 style="font-size:48px;line-height:.9;margin:0">RUN<br><span style="color:#e59a28">OVER</span></h1>
+      <p id="result"></p>
+      <button id="againBtn">YRITÄ UUDELLEEN</button>
+    </div>
+  </div>
+</div>
+
+<div id="touch"><div id="left"></div><div id="jump"></div><div id="right"></div></div>
+<div id="jumpHint"></div>
+
+<script>
+(() => {
+const c=document.getElementById('game'),ctx=c.getContext('2d');
+const menu=document.getElementById('menu'),gameover=document.getElementById('gameover');
+const startBtn=document.getElementById('startBtn'),againBtn=document.getElementById('againBtn');
+const result=document.getElementById('result'),distEl=document.getElementById('distance'),scrapEl=document.getElementById('scrap');
+
+let W,H,DPR,last=0,state='menu',world=0,score=0,best=+localStorage.wreckBest04||0,speed=300,startGrace=0;
+let p=null,plats=[],items=[],obs=[],particles=[],keys={left:false,right:false};
+
+function resize(){DPR=Math.min(2,devicePixelRatio||1);W=innerWidth;H=innerHeight;c.width=W*DPR;c.height=H*DPR;c.style.width=W+'px';c.style.height=H+'px';ctx.setTransform(DPR,0,0,DPR,0,0)}
+addEventListener('resize',resize);resize();
+
+function reset(){
+  world=0;score=0;speed=300;startGrace=2.2;
+  p={x:Math.max(80,W*.18),y:H-165,w:46,h:66,vy:0,vx:0,on:false,anim:0};
+  const startWidth=Math.max(1800,W*3);
+  plats=[{x:-300,y:H-78,w:startWidth,h:28,start:true}];
+  items=[];obs=[];particles=[];
+  items.push({x:W*.72,y:H-118,r:11},{x:W*.95,y:H-118,r:11});
+  while(plats.at(-1).x+plats.at(-1).w<W+2600)spawn();
+  state='play';menu.classList.add('hidden');gameover.classList.add('hidden');
+}
+function spawn(){
+  const q=plats.at(-1),gap=55+Math.random()*85,y=Math.max(155,H-105-Math.random()*165),w=180+Math.random()*260,x=q.x+q.w+gap;
+  plats.push({x,y,w,h:26});
+  if(Math.random()<.93){const n=Math.random()<.4?2:1;for(let i=0;i<n;i++)items.push({x:x+w*(.38+i*.22),y:y-34,r:11})}
+  if(Math.random()<.34)obs.push({x:x+w*.73,y:y-34,w:34,h:34,type:Math.random()<.52?'barrel':'spikes'});
+}
+function jump(){if(state==='play'&&p&&p.on){p.vy=-760;p.on=false}}
+function die(){if(state!=='play')return;state='over';best=Math.max(best,score);localStorage.wreckBest04=best;result.textContent=`Matka ${Math.floor(world/10)} m • romu ${score} • ennätys ${best}`;gameover.classList.remove('hidden')}
+function update(dt){
+  if(state!=='play'||!p)return;
+  p.anim+=dt*11;
+  if(startGrace>0)startGrace-=dt;else{speed=Math.min(710,speed+dt*4);world+=speed*dt}
+  while(plats.at(-1).x+plats.at(-1).w<world+W+1400)spawn();
+  p.vy+=1900*dt;p.y+=p.vy*dt;
+  const target=(keys.right?230:0)-(keys.left?230:0);p.vx+=(target-p.vx)*Math.min(1,dt*8);p.x+=p.vx*dt;p.x=Math.max(18,Math.min(W-p.w-18,p.x));p.on=false;
+  for(const q of plats){const sx=q.x-world;if(p.x+p.w>sx&&p.x<sx+q.w&&p.y+p.h<=q.y+15&&p.y+p.h+p.vy*dt>=q.y){p.y=q.y-p.h;p.vy=0;p.on=true}}
+  for(let i=items.length-1;i>=0;i--){const q=items[i],sx=q.x-world;if(Math.hypot(p.x+23-sx,p.y+30-q.y)<36){score++;items.splice(i,1)}}
+  for(const q of obs){const sx=q.x-world;if(p.x<sx+q.w&&p.x+p.w>sx&&p.y<q.y+q.h&&p.y+p.h>q.y)die()}
+  if(p.y>H+100)die();
+}
+function rr(x,y,w,h,r,color){ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fillStyle=color;ctx.fill()}
+function sky(){const gr=ctx.createLinearGradient(0,0,0,H);gr.addColorStop(0,'#172119');gr.addColorStop(.58,'#4b4532');gr.addColorStop(1,'#6e5737');ctx.fillStyle=gr;ctx.fillRect(0,0,W,H);ctx.fillStyle='#202a22';for(let i=0;i<18;i++){const sx=((i*165-world*.10)%(W+220))-100,hh=70+(i%6)*28;ctx.fillRect(sx,H-120-hh,82,hh+120)}}
+function platform(q){const sx=q.x-world;if(sx<-500||sx>W+500)return;ctx.fillStyle=q.start?'#3a3932':'#4b4940';ctx.fillRect(sx,q.y,q.w,q.h);ctx.fillStyle='#b1864a';ctx.fillRect(sx,q.y,q.w,5)}
+function gear(x,y,r){ctx.save();ctx.translate(x,y);ctx.fillStyle='#e6a12f';for(let i=0;i<8;i++){ctx.rotate(Math.PI/4);ctx.fillRect(r*.72,-3,r*.38,6)}ctx.beginPath();ctx.arc(0,0,r*.78,0,Math.PI*2);ctx.fill();ctx.fillStyle='#493a20';ctx.beginPath();ctx.arc(0,0,r*.30,0,Math.PI*2);ctx.fill();ctx.restore()}
+function obstacle(q){const sx=q.x-world;if(q.type==='barrel'){rr(sx,q.y,q.w,q.h,5,'#9e3529');ctx.fillStyle='#e0712c';ctx.fillRect(sx+3,q.y+7,q.w-6,5);ctx.fillRect(sx+3,q.y+22,q.w-6,5)}else{ctx.fillStyle='#d4c09a';for(let i=0;i<3;i++){const xx=sx+i*11;ctx.beginPath();ctx.moveTo(xx,q.y+q.h);ctx.lineTo(xx+6,q.y);ctx.lineTo(xx+12,q.y+q.h);ctx.fill()}}}
+function drawPlayer(){if(!p)return;const x=p.x,y=p.y,bob=p.on?Math.sin(p.anim)*1.8:0,swing=p.on?Math.sin(p.anim)*5:0;ctx.save();ctx.translate(0,bob);ctx.fillStyle='rgba(0,0,0,.28)';ctx.beginPath();ctx.ellipse(x+23,y+68,27,7,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#2f4458';ctx.lineWidth=11;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(x+18,y+44);ctx.lineTo(x+15+swing,y+61);ctx.stroke();ctx.beginPath();ctx.moveTo(x+30,y+44);ctx.lineTo(x+33-swing,y+61);ctx.stroke();rr(x+7,y+18,33,31,6,'#171717');ctx.strokeStyle='#b77859';ctx.lineWidth=10;ctx.beginPath();ctx.moveTo(x+8,y+24);ctx.lineTo(x-2,y+39+swing*.4);ctx.stroke();ctx.beginPath();ctx.moveTo(x+38,y+24);ctx.lineTo(x+48,y+38-swing*.4);ctx.stroke();ctx.fillStyle='#bd7c5c';ctx.beginPath();ctx.arc(x+24,y+8,14,0,Math.PI*2);ctx.fill();ctx.fillStyle='#44332c';ctx.beginPath();ctx.moveTo(x+13,y+10);ctx.quadraticCurveTo(x+24,y+29,x+35,y+10);ctx.quadraticCurveTo(x+24,y+20,x+13,y+10);ctx.fill();ctx.fillStyle='#e77b9f';ctx.beginPath();ctx.arc(x+23,y-2,13,Math.PI,0);ctx.fill();ctx.fillRect(x+10,y-3,28,7);ctx.fillRect(x+32,y+1,13,4);ctx.fillStyle='#ece8de';ctx.font='bold 6px Arial';ctx.fillText('WRECK',x+12,y+31);ctx.fillText('RUNNER',x+10,y+38);ctx.restore()}
+function draw(){sky();for(const q of plats)platform(q);for(const q of items)gear(q.x-world,q.y,q.r);for(const q of obs)obstacle(q);drawPlayer();if(state==='play'&&startGrace>0){ctx.fillStyle='rgba(255,255,255,.82)';ctx.font='bold 16px Arial';ctx.textAlign='center';ctx.fillText('VALMISTAUDU...',W/2,58);ctx.textAlign='left'}distEl.textContent='MATKA '+Math.floor(world/10)+' m';scrapEl.textContent='⚙ '+score}
+function loop(t){const dt=Math.min(.033,(t-last)/1000||0);last=t;update(dt);draw();requestAnimationFrame(loop)}
+requestAnimationFrame(loop);
+startBtn.onclick=reset;againBtn.onclick=reset;
+addEventListener('keydown',e=>{if(e.key===' '||e.key==='ArrowUp'){e.preventDefault();jump()}if(e.key==='ArrowLeft')keys.left=true;if(e.key==='ArrowRight')keys.right=true});
+addEventListener('keyup',e=>{if(e.key==='ArrowLeft')keys.left=false;if(e.key==='ArrowRight')keys.right=false});
+function hold(id,key){const el=document.getElementById(id);el.addEventListener('pointerdown',e=>{e.preventDefault();keys[key]=true});['pointerup','pointercancel','pointerleave'].forEach(v=>el.addEventListener(v,e=>{e.preventDefault();keys[key]=false}))}
+hold('left','left');hold('right','right');document.getElementById('jump').addEventListener('pointerdown',e=>{e.preventDefault();jump()});
+})();
+</script>
+</body>
+</html>
