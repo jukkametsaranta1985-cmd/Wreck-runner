@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Wreck Runner 0.12</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#0c0e0c;font-family:Arial,sans-serif;touch-action:none}
+canvas{display:block;width:100%;height:100%}
+.hidden{display:none!important}
+#hud{position:fixed;top:10px;left:12px;right:12px;z-index:5;display:flex;gap:8px;color:#fff;font-weight:900;text-shadow:2px 2px #000;pointer-events:none}
+.grow{flex:1}.badge{background:#0009;padding:6px 9px;border-radius:9px}
+#music,#pause{pointer-events:auto;background:#181818dd;color:#fff;border:1px solid #ffffff33;border-radius:8px;padding:6px 10px}
+.overlay{position:fixed;inset:0;z-index:10;background:#000b;display:flex;align-items:center;justify-content:center}
+.panel{width:min(430px,92vw);padding:20px;border:2px solid #6f685a;border-radius:16px;background:#171713;color:#fff;text-align:center}
+button{font-size:18px;font-weight:900;padding:13px;border:0;border-radius:9px}
+.primary{width:100%;background:#e99b22}.secondary{width:100%;margin-top:8px;background:#44413b;color:#fff}
+#menu{background:url('wreck_runner_game_bg_09.jpg') center/cover no-repeat}
+#menu:after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,#0003,#000b)}
+#menuBox{position:relative;z-index:2;width:min(390px,88vw)}
+h1{font-size:50px;line-height:.82;margin:0;text-shadow:4px 4px #000}h1 span{color:#e99b22}
+#touch{position:fixed;inset:0;z-index:4;pointer-events:none}.zone{position:absolute;bottom:0;height:38vh;pointer-events:auto}
+#left{left:0;width:28%}#right{right:0;width:28%}#jump{left:28%;width:44%}
+#jumpButton{position:fixed;right:24px;bottom:38px;z-index:8;width:96px;height:96px;border-radius:50%;border:3px solid #d6a34b;background:radial-gradient(circle at 35% 30%,#ffcf63 0%,#e99b22 45%,#9d5e0d 100%);color:#17120b;font-size:17px;font-weight:1000;letter-spacing:.5px;text-shadow:0 1px #fff7;box-shadow:0 7px 20px #000b,inset 0 0 0 3px #0005;pointer-events:auto;touch-action:none}
+#jumpButton:before{content:"";position:absolute;inset:8px;border-radius:50%;border:2px dashed #2a201255}
+#jumpButton:active{transform:scale(.93);filter:brightness(1.15)}
+#shopGrid{display:grid;gap:8px;margin-top:10px}.up{display:grid;grid-template-columns:1fr auto;gap:8px;text-align:left;background:#0d0d0bcc;padding:10px;border-radius:8px}.buy{background:#739a38}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hud">
+  <span id="dist" class="badge">MATKA 0 m</span>
+  <span id="shield" class="badge hidden">🛡️</span>
+  <span class="grow"></span>
+  <span id="scrap" class="badge">⚙ 0</span>
+  <button id="music">♫</button>
+  <button id="pause">Ⅱ</button>
+</div>
+
+<div id="menu" class="overlay">
+  <div id="menuBox">
+    <h1>WRECK<br><span>RUNNER</span></h1>
+    <p style="color:#fff;font-weight:900">RUN. JUMP. SURVIVE.</p>
+    <button id="play" class="primary">PLAY</button>
+    <button id="shopBtn" class="secondary">UPGRADES • ⚙ <span id="wallet">0</span></button>
+  </div>
+</div>
+
+<div id="shop" class="overlay hidden"><div class="panel">
+  <h2>UPGRADES</h2><p>Romupankki: ⚙ <b id="wallet2">0</b></p>
+  <div id="shopGrid"></div><button id="back" class="secondary">TAKAISIN</button>
+</div></div>
+
+<div id="over" class="overlay hidden"><div class="panel">
+  <h2>RUN OVER</h2><p id="result"></p>
+  <button id="again" class="primary">YRITÄ UUDELLEEN</button>
+  <button id="menuBtn" class="secondary">VALIKKOON</button>
+</div></div>
+
+<div id="paused" class="overlay hidden"><div class="panel">
+  <h2>TAUKO</h2><button id="resume" class="primary">JATKA</button>
+</div></div>
+
+<div id="touch">
+  <div id="left" class="zone"></div>
+  <div id="jump" class="zone"></div>
+  <div id="right" class="zone"></div>
+</div>
+<button id="jumpButton" aria-label="Hyppy">JUMP<br>⬆</button>
+
+<script>
+const $=id=>document.getElementById(id),c=$('game'),x=c.getContext('2d');
+const PIMG=new Image(),BG=new Image();
+PIMG.src='wreck_runner_player_12.png';
+BG.src='wreck_runner_game_bg_09.jpg';
+
+let W,H,DPR,last=0,state='menu',world=0,speed=280,runScrap=0,p,plats=[],items=[],obs=[],keys={left:0,right:0};
+let save=JSON.parse(localStorage.getItem('wr12')||'{}'),wallet=save.wallet||0,best=save.best||0,musicOn=save.musicOn!==false;
+let up=Object.assign({double:0,jump:0,magnet:0,shield:0,value:0},save.up||{});
+const defs={double:['DOUBLE JUMP',180,1],jump:['JUMP BOOTS',70,4],magnet:['MAGNET',50,4],shield:['SHIELD',80,3],value:['SCRAP VALUE',100,5]};
+
+function persist(){localStorage.wr12=JSON.stringify({wallet,best,musicOn,up})}
+function resize(){DPR=Math.min(2,devicePixelRatio||1);W=innerWidth;H=innerHeight;c.width=W*DPR;c.height=H*DPR;x.setTransform(DPR,0,0,DPR,0,0)}
+onresize=resize;resize();
+
+let actx,timer,step=0;
+function ensureA(){if(!actx)actx=new (AudioContext||webkitAudioContext)();if(actx.state==='suspended')actx.resume()}
+function tone(f,d=.08,t='square',g=.012){if(!musicOn||!actx)return;let o=actx.createOscillator(),v=actx.createGain();o.type=t;o.frequency.value=f;v.gain.value=g;o.connect(v);v.connect(actx.destination);o.start();v.gain.exponentialRampToValueAtTime(.0001,actx.currentTime+d);o.stop(actx.currentTime+d)}
+function startMusic(){ensureA();clearInterval(timer);timer=setInterval(()=>{let b=[55,55,65,73,65,55,49,55],l=[220,247,262,294,262,247,220,196],i=step++%8;tone(b[i],.18,'sawtooth',.012);if(i%2===0)tone(l[i],.1,'square',.008)},220)}
+function setMusic(v){musicOn=v;$('music').textContent=v?'♫':'×';persist();if(v)startMusic();else clearInterval(timer)}
+$('music').onclick=()=>{ensureA();setMusic(!musicOn)};
+
+function hide(){['menu','shop','over','paused'].forEach(i=>$(i).classList.add('hidden'))}
+function reset(){
+  ensureA();if(musicOn)startMusic();
+  world=0;speed=280;runScrap=0;let gy=H-78;
+  // collision box stays compact and centered under the visible runner
+  p={x:Math.max(105,W*.20),y:gy-96,w:68,h:96,vy:0,vx:0,on:1,jumps:0,shield:up.shield?1:0,anim:0};
+  plats=[{x:4500,y:gy-70,w:520,h:27}];items=[];obs=[];
+  for(let i=0;i<17;i++)items.push({x:450+i*145,y:gy-42});
+  while(plats.at(-1).x+plats.at(-1).w<W+5400)spawn();
+  state='play';hide();$('shield').classList.toggle('hidden',!p.shield)
+}
+function spawn(){
+  let q=plats.at(-1),gx=60+Math.random()*95,y=Math.max(145,H-105-Math.random()*170),w=200+Math.random()*300,xx=q.x+q.w+gx;
+  plats.push({x:xx,y,w,h:27});
+  if(Math.random()<.95)items.push({x:xx+w*.45,y:y-34});
+  if(Math.random()<.35)obs.push({x:xx+w*.72,y:y-35,w:35,h:35})
+}
+function jump(){
+  if(state!=='play')return;
+  if(p.on){p.vy=-(760+up.jump*28);p.on=0;p.jumps=1;tone(330,.05,'square',.018)}
+  else if(up.double&&p.jumps<2){p.vy=-(700+up.jump*20);p.jumps=2;tone(430,.06,'square',.018)}
+}
+function end(){
+  if(state!=='play')return;
+  state='over';best=Math.max(best,Math.floor(world/10));wallet+=runScrap*(1+up.value);persist();
+  $('result').textContent='Matka '+Math.floor(world/10)+' m • romu '+runScrap+' • ennätys '+best+' m';
+  $('over').classList.remove('hidden')
+}
+function update(dt){
+  if(state!=='play')return;
+  p.anim+=dt*11;world+=speed*dt;speed=Math.min(760,speed+dt*4.7);
+  while(plats.at(-1).x+plats.at(-1).w<world+W+1700)spawn();
+  p.vy+=1900*dt;p.y+=p.vy*dt;
+  let tar=(keys.right?245:0)-(keys.left?245:0);
+  p.vx+=(tar-p.vx)*Math.min(1,dt*9);p.x+=p.vx*dt;p.x=Math.max(18,Math.min(W-p.w-18,p.x));p.on=0;
+  let gy=H-78;
+  if(world<4500&&p.y+p.h>=gy&&p.vy>=0){p.y=gy-p.h;p.vy=0;p.on=1;p.jumps=0}
+  for(let q of plats){
+    let sx=q.x-world;
+    if(p.x+p.w>sx&&p.x<sx+q.w&&p.y+p.h<=q.y+15&&p.y+p.h+p.vy*dt>=q.y){p.y=q.y-p.h;p.vy=0;p.on=1;p.jumps=0}
+  }
+  let m=38+up.magnet*35;
+  for(let i=items.length-1;i>=0;i--){
+    let q=items[i],sx=q.x-world,d=Math.hypot(p.x+p.w*.55-sx,p.y+p.h*.45-q.y);
+    if(d<m){runScrap++;items.splice(i,1);tone(720,.03,'square',.01)}
+  }
+  for(let q of obs){
+    let sx=q.x-world;
+    if(p.x<sx+q.w&&p.x+p.w>sx&&p.y<q.y+q.h&&p.y+p.h>q.y){
+      if(p.shield){p.shield=0;$('shield').classList.add('hidden');q.x=-99999}else end()
+    }
+  }
+  if(p.y>H+100)end()
+}
+function bg(){
+  if(BG.complete){
+    let sc=Math.max(W/BG.width,H/BG.height),sw=BG.width*sc,sh=BG.height*sc,xx=-((world*.08)%sw);
+    x.globalAlpha=.82;x.drawImage(BG,xx,0,sw,sh);x.drawImage(BG,xx+sw,0,sw,sh);x.globalAlpha=1
+  }else{x.fillStyle='#263026';x.fillRect(0,0,W,H)}
+  x.fillStyle='#0003';x.fillRect(0,0,W,H)
+}
+function ground(){
+  if(world<4500){
+    let y=H-78;x.fillStyle='#3b3930';x.fillRect(0,y,W,28);
+    x.fillStyle='#d2974b';x.fillRect(0,y,W,5);
+    x.fillStyle='#20221e';x.fillRect(0,y+28,W,H-y-28)
+  }
+}
+function platform(q){let sx=q.x-world;if(sx<-500||sx>W+500)return;x.fillStyle='#514d42';x.fillRect(sx,q.y,q.w,q.h);x.fillStyle='#d2974b';x.fillRect(sx,q.y,q.w,5);x.fillStyle='#20221e';x.fillRect(sx,q.y+q.h,q.w,H-q.y-q.h)}
+function gear(q){let sx=q.x-world;x.save();x.translate(sx,q.y);x.shadowColor='#ffb833';x.shadowBlur=8;x.fillStyle='#e99b22';for(let i=0;i<8;i++){x.rotate(Math.PI/4);x.fillRect(8,-3,8,6)}x.beginPath();x.arc(0,0,9,0,7);x.fill();x.fillStyle='#493820';x.beginPath();x.arc(0,0,3,0,7);x.fill();x.restore()}
+function obstacle(q){let sx=q.x-world;x.fillStyle='#a23a2b';x.fillRect(sx,q.y,q.w,q.h);x.fillStyle='#ed7b31';x.fillRect(sx+3,q.y+7,q.w-6,5)}
+function player(){
+  if(!p)return;
+  const runBob=p.on?Math.sin(p.anim)*2.0:0;
+  const runLean=p.on?Math.sin(p.anim*.5)*0.010:0;
+  x.save();
+  // 0.12: sprite itself is re-cropped and centered, so draw exactly over collision box.
+  const visualCX=p.x+p.w/2;
+  const visualBottom=p.y+p.h+runBob;
+  x.translate(visualCX,visualBottom);
+  x.rotate(runLean);
+  if(PIMG.complete){
+    const dw=118,dh=140;
+    x.drawImage(PIMG,-dw/2,-dh,dw,dh);
+  }
+  if(p.shield){x.strokeStyle='#8bd2ff';x.lineWidth=3;x.beginPath();x.arc(0,-58,58,0,7);x.stroke()}
+  x.restore()
+}
+function draw(){bg();ground();for(let q of plats)platform(q);for(let q of items)gear(q);for(let q of obs)obstacle(q);player();$('dist').textContent='MATKA '+Math.floor(world/10)+' m';$('scrap').textContent='⚙ '+runScrap}
+function loop(t){let dt=Math.min(.033,(t-last)/1000||0);last=t;update(dt);draw();requestAnimationFrame(loop)}requestAnimationFrame(loop);
+
+function updateWallet(){$('wallet').textContent=wallet;$('wallet2').textContent=wallet}
+function renderShop(){updateWallet();let g=$('shopGrid');g.innerHTML='';for(let id in defs){let d=defs[id],lvl=up[id],cost=d[1]*(lvl+1),r=document.createElement('div');r.className='up';r.innerHTML='<div><b>'+d[0]+' '+lvl+'/'+d[2]+'</b></div>';let b=document.createElement('button');b.className='buy';b.textContent=lvl>=d[2]?'MAX':'⚙ '+cost;b.disabled=lvl>=d[2]||wallet<cost;b.onclick=()=>{if(wallet>=cost&&up[id]<d[2]){wallet-=cost;up[id]++;persist();renderShop()}};r.appendChild(b);g.appendChild(r)}}
+$('play').onclick=reset;$('again').onclick=reset;$('shopBtn').onclick=()=>{renderShop();hide();$('shop').classList.remove('hidden')};
+$('back').onclick=$('menuBtn').onclick=()=>{hide();updateWallet();$('menu').classList.remove('hidden')};
+$('pause').onclick=()=>{if(state==='play'){state='paused';$('paused').classList.remove('hidden')}};
+$('resume').onclick=()=>{state='play';$('paused').classList.add('hidden');last=performance.now()};
+addEventListener('keydown',e=>{if(e.key===' '||e.key==='ArrowUp')jump();if(e.key==='ArrowLeft')keys.left=1;if(e.key==='ArrowRight')keys.right=1});
+addEventListener('keyup',e=>{if(e.key==='ArrowLeft')keys.left=0;if(e.key==='ArrowRight')keys.right=0});
+function hold(id,k){let e=$(id);e.onpointerdown=()=>keys[k]=1;e.onpointerup=e.onpointercancel=()=>keys[k]=0}
+hold('left','left');hold('right','right');$('jump').onpointerdown=jump;$('jumpButton').onpointerdown=(e)=>{e.preventDefault();jump()};
+setMusic(musicOn);updateWallet();
+</script>
+</body></html>
