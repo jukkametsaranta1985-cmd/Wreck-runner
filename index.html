@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Wreck Runner 0.19.0</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#0c0e0c;font-family:Arial,sans-serif;touch-action:none}
+canvas{display:block;width:100%;height:100%}
+.hidden{display:none!important}
+#hud{position:fixed;top:10px;left:12px;right:12px;z-index:5;display:flex;gap:8px;color:#fff;font-weight:900;text-shadow:2px 2px #000;pointer-events:none}
+.grow{flex:1}.badge{background:#0009;padding:6px 9px;border-radius:9px}
+#music,#pause{pointer-events:auto;background:#181818dd;color:#fff;border:1px solid #ffffff33;border-radius:8px;padding:6px 10px}
+.overlay{position:fixed;inset:0;z-index:10;background:#000b;display:flex;align-items:center;justify-content:center}
+.panel{width:min(430px,92vw);padding:20px;border:2px solid #6f685a;border-radius:16px;background:#171713;color:#fff;text-align:center}
+button{font-size:18px;font-weight:900;padding:13px;border:0;border-radius:9px}
+.primary{width:100%;background:#e99b22}.secondary{width:100%;margin-top:8px;background:#44413b;color:#fff}
+#menu{background:url('wreck_runner_start_15_6.jpg') center/cover no-repeat}
+#menu:after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,#0003,#000b)}
+#menuBox{position:relative;z-index:2;width:min(390px,88vw)}
+h1{font-size:50px;line-height:.82;margin:0;text-shadow:4px 4px #000}h1 span{color:#e99b22}
+#touch{position:fixed;inset:0;z-index:4;pointer-events:none}.zone{position:absolute;bottom:0;height:38vh;pointer-events:auto}
+#left{left:0;width:28%}#right{right:0;width:28%}#jump{left:28%;width:44%}
+#jumpButton{position:fixed;right:22px;bottom:34px;z-index:8;width:100px;height:100px;border-radius:50%;border:5px solid #f0a51f;background:radial-gradient(circle,#161a1c 0%,#090b0d 70%,#020303 100%);color:#fff;font-size:17px;font-weight:1000;letter-spacing:.7px;text-shadow:0 2px #000;box-shadow:0 0 0 3px #3b2508,0 0 22px #f29a21aa,inset 0 0 18px #000;pointer-events:auto;touch-action:none}
+#jumpButton:before{content:"";position:absolute;inset:8px;border-radius:50%;border:2px solid #ffffff22}
+#jumpButton:active{transform:scale(.93);filter:brightness(1.15)}
+#shopGrid{display:grid;gap:8px;margin-top:10px}.up{display:grid;grid-template-columns:1fr auto;gap:8px;text-align:left;background:#0d0d0bcc;padding:10px;border-radius:8px}.buy{background:#739a38}
+#over{background:radial-gradient(circle at 50% 35%,#491822cc 0%,#090909f2 63%,#000 100%)}
+#over .panel{width:min(470px,93vw);background:#0d0d0dec;border-color:#8d2947;box-shadow:0 0 35px #000}
+#gameOverTitle{margin:0 0 8px;font-size:42px;line-height:1;color:#ff3b7d;text-shadow:3px 3px #000;letter-spacing:1px}
+#gameOverArt{display:block;width:100%;border-radius:10px;border:1px solid #ffffff22;margin:8px 0 10px}
+#jukkaDown{font-weight:1000;font-size:19px;margin:7px 0;color:#fff}
+#checkpoint{position:fixed;left:50%;top:72px;z-index:7;transform:translateX(-50%);padding:8px 15px;border-radius:8px;background:#111d;border:1px solid #e99b22;color:#fff;font-weight:1000;text-shadow:2px 2px #000;pointer-events:none;transition:opacity .18s}
+#checkpoint.hidden{display:block!important;opacity:0}
+
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hud">
+  <span id="dist" class="badge">MATKA 0 m</span>
+  <span id="shield" class="badge hidden">🛡️</span>
+  <span class="grow"></span>
+  <span id="scrap" class="badge">⚙ 0</span>
+  <button id="music">♫</button>
+  <button id="pause">Ⅱ</button>
+</div>
+
+<div id="menu" class="overlay">
+  <div id="menuBox">
+    <h1>WRECK<br><span>RUNNER</span></h1>
+    <p style="color:#fff;font-weight:900">RUN. JUMP. SURVIVE.</p>
+    <button id="play" class="primary">PLAY</button>
+    <button id="shopBtn" class="secondary">UPGRADES • ⚙ <span id="wallet">0</span></button>
+  </div>
+</div>
+
+<div id="shop" class="overlay hidden"><div class="panel">
+  <h2>UPGRADES</h2><p>Romupankki: ⚙ <b id="wallet2">0</b></p>
+  <div id="shopGrid"></div><button id="back" class="secondary">TAKAISIN</button>
+</div></div>
+
+<div id="over" class="overlay hidden"><div class="panel">
+  <div id="gameOverTitle">GAME OVER</div>
+  <img id="gameOverArt" src="wreck_runner_gameover_jukka_19.png" alt="Jukka kaatui">
+  <div id="jukkaDown">JUKKA KAATUI 😅</div>
+  <p id="result"></p>
+  <button id="again" class="primary">YRITÄ UUDELLEEN</button>
+  <button id="menuBtn" class="secondary">VALIKKOON</button>
+</div></div>
+<div id="checkpoint" class="hidden">SEKTORI 1</div>
+
+<div id="paused" class="overlay hidden"><div class="panel">
+  <h2>TAUKO</h2><button id="resume" class="primary">JATKA</button>
+</div></div>
+
+<div id="touch">
+  <div id="left" class="zone"></div>
+  <div id="jump" class="zone"></div>
+  <div id="right" class="zone"></div>
+</div>
+<button id="jumpButton" aria-label="Hyppy">JUMP<br>⬆</button>
+
+<script>
+const $=id=>document.getElementById(id),c=$('game'),x=c.getContext('2d');
+const PIMG=new Image(),BG=new Image(),RUNIMG=new Image(),JUMPIMG=new Image();
+PIMG.src='wreck_runner_player_15_4.png';
+BG.src='wreck_runner_bg_15_1.jpg';RUNIMG.src='wreck_runner_run_18_5.png';JUMPIMG.src='wreck_runner_jump_18_4.png';
+
+let W,H,DPR,last=0,state='menu',world=0,speed=280,runScrap=0,p,plats=[],items=[],obs=[],keys={left:0,right:0};
+let jumpBuffer=0,coyote=0,deathT=0,deathReason='',nextSector=250,sectorFlash=0;
+const START_GROUND=2100;
+let save=JSON.parse(localStorage.getItem('wr190')||'{}'),wallet=save.wallet||0,best=save.best||0,musicOn=save.musicOn!==false;
+let up=Object.assign({double:0,jump:0,magnet:0,shield:0,value:0},save.up||{});
+const defs={double:['DOUBLE JUMP',180,1],jump:['JUMP BOOTS',70,4],magnet:['MAGNET',50,4],shield:['SHIELD',80,3],value:['SCRAP VALUE',100,5]};
+
+function persist(){localStorage.wr190=JSON.stringify({wallet,best,musicOn,up})}
+function resize(){DPR=Math.min(2,devicePixelRatio||1);W=innerWidth;H=innerHeight;c.width=W*DPR;c.height=H*DPR;x.setTransform(DPR,0,0,DPR,0,0)}
+onresize=resize;resize();
+
+let actx,timer,step=0;
+function ensureA(){if(!actx)actx=new (AudioContext||webkitAudioContext)();if(actx.state==='suspended')actx.resume()}
+function tone(f,d=.08,t='square',g=.012){if(!musicOn||!actx)return;let o=actx.createOscillator(),v=actx.createGain();o.type=t;o.frequency.value=f;v.gain.value=g;o.connect(v);v.connect(actx.destination);o.start();v.gain.exponentialRampToValueAtTime(.0001,actx.currentTime+d);o.stop(actx.currentTime+d)}
+function startMusic(){ensureA();clearInterval(timer);timer=setInterval(()=>{let b=[55,55,65,73,65,55,49,55],l=[220,247,262,294,262,247,220,196],i=step++%8;tone(b[i],.18,'sawtooth',.012);if(i%2===0)tone(l[i],.1,'square',.008)},220)}
+function setMusic(v){musicOn=v;$('music').textContent=v?'♫':'×';persist();if(v)startMusic();else clearInterval(timer)}
+$('music').onclick=()=>{ensureA();setMusic(!musicOn)};
+
+function hide(){['menu','shop','over','paused'].forEach(i=>$(i).classList.add('hidden'))}
+function reset(){
+  ensureA();if(musicOn)startMusic();
+  world=0;speed=285;runScrap=0;let gy=H-78;
+  jumpBuffer=0;coyote=0;deathT=0;deathReason='';nextSector=250;sectorFlash=0;
+  p={x:Math.max(64,W*.12),y:gy-82,w:58,h:82,vy:0,vx:0,on:1,jumps:0,shield:up.shield?1:0,anim:0,deathRot:0};
+
+  // Shorter safe intro. The first hazards teach the jump before the real gaps begin.
+  plats=[{x:START_GROUND-70,y:gy-48,w:430,h:27,zone:0}];
+  items=[];obs=[
+    {x:820,y:gy-42,w:34,h:42,type:'barrel'},
+    {x:1450,y:gy-22,w:66,h:22,type:'spikes'}
+  ];
+  for(let i=0;i<11;i++)items.push({x:330+i*145,y:gy-48-(i%3===1?20:0)});
+  while(plats.at(-1).x+plats.at(-1).w<W+5600)spawn();
+  state='play';hide();$('shield').classList.toggle('hidden',!p.shield);
+  $('checkpoint').classList.add('hidden');
+}
+function spawn(){
+  let q=plats.at(-1);
+  const d=Math.min(1,world/9000); // difficulty rises gradually
+  const zone=Math.min(3,Math.floor((q.x/10)/250));
+  const gx=55+Math.random()*(70+80*d);
+  const dy=(Math.random()-.5)*(105+80*d);
+  const y=Math.max(145,Math.min(H-108,q.y+dy));
+  const w=220+Math.random()*(290-70*d);
+  const xx=q.x+q.w+gx;
+  const plat={x:xx,y,w,h:27,zone};
+  plats.push(plat);
+
+  // Scrap now appears in small lines or arcs instead of one lonely pickup.
+  if(Math.random()<.88){
+    const count=Math.random()<.35?5:3;
+    for(let i=0;i<count;i++){
+      const t=(i+1)/(count+1);
+      const arc=Math.sin(t*Math.PI)*(count===5?34:20);
+      items.push({x:xx+w*t,y:y-36-arc});
+    }
+  }
+
+  // Wider platforms may contain a barrel or a bed of spikes.
+  if(w>250 && Math.random()<(.24+.22*d)){
+    if(Math.random()<.52){
+      obs.push({x:xx+w*(.64+.12*Math.random()),y:y-43,w:34,h:43,type:'barrel'});
+    }else{
+      obs.push({x:xx+w*(.58+.12*Math.random()),y:y-22,w:66,h:22,type:'spikes'});
+    }
+  }
+}
+function jump(){
+  if(state!=='play')return;
+  jumpBuffer=.12;
+  tryJump();
+}
+function tryJump(){
+  if(state!=='play'||!p)return;
+  if(p.on||coyote>0){
+    p.vy=-(760+up.jump*28);p.on=0;p.jumps=1;coyote=0;jumpBuffer=0;
+    tone(330,.05,'square',.018);
+  }else if(up.double&&p.jumps<2){
+    p.vy=-(700+up.jump*20);p.jumps=2;jumpBuffer=0;
+    tone(430,.06,'square',.018);
+  }
+}
+function cutJump(){
+  if(state==='play'&&p&&p.vy<-220)p.vy*=.58;
+}
+function startDeath(reason='hit'){
+  if(state!=='play')return;
+  state='dying';deathT=0;deathReason=reason;
+  p.deathRot=0;
+  p.vx=reason==='fall'?75:-115;
+  if(reason!=='fall')p.vy=-250;
+  tone(95,.28,'sawtooth',.025);
+}
+function finishDeath(){
+  if(state==='over')return;
+  state='over';
+  best=Math.max(best,Math.floor(world/10));
+  wallet+=runScrap*(1+up.value);persist();
+  $('result').textContent='Matka '+Math.floor(world/10)+' m • romu '+runScrap+' • ennätys '+best+' m';
+  $('over').classList.remove('hidden');
+}
+function update(dt){
+  if(state==='dying'){
+    deathT+=dt;
+    p.vy+=1750*dt;p.y+=p.vy*dt;p.x+=p.vx*dt;
+    p.deathRot+=dt*(deathReason==='fall'?4.6:7.2);
+    if(deathT>.92)finishDeath();
+    return;
+  }
+  if(state!=='play')return;
+
+  p.anim+=dt*11;world+=speed*dt;speed=Math.min(760,speed+dt*4.45);
+  jumpBuffer=Math.max(0,jumpBuffer-dt);
+  sectorFlash=Math.max(0,sectorFlash-dt);
+
+  while(plats.at(-1).x+plats.at(-1).w<world+W+1800)spawn();
+
+  const wasOn=p.on;
+  p.vy+=1900*dt;p.y+=p.vy*dt;
+  let tar=(keys.right?245:0)-(keys.left?245:0);
+  p.vx+=(tar-p.vx)*Math.min(1,dt*9);
+  p.x+=p.vx*dt;p.x=Math.max(18,Math.min(W-p.w-18,p.x));
+  p.on=0;
+
+  let gy=H-78;
+  if(world<START_GROUND&&p.y+p.h>=gy&&p.vy>=0){
+    p.y=gy-p.h;p.vy=0;p.on=1;p.jumps=0;
+  }
+  for(let q of plats){
+    let sx=q.x-world;
+    if(p.x+p.w>sx&&p.x<sx+q.w&&p.y+p.h<=q.y+16&&p.y+p.h+p.vy*dt>=q.y){
+      p.y=q.y-p.h;p.vy=0;p.on=1;p.jumps=0;
+    }
+  }
+
+  // Coyote time makes late edge-jumps feel fair on a phone.
+  if(p.on)coyote=.095;
+  else coyote=Math.max(0,coyote-dt);
+  if(p.on&&jumpBuffer>0)tryJump();
+
+  // Milestone flash every 250 m.
+  const meters=Math.floor(world/10);
+  if(meters>=nextSector){
+    $('checkpoint').textContent='SEKTORI '+Math.floor(nextSector/250+1)+' • '+nextSector+' m';
+    $('checkpoint').classList.remove('hidden');
+    sectorFlash=1.55;nextSector+=250;
+    tone(520,.08,'square',.012);tone(660,.10,'square',.009);
+  }
+  if(sectorFlash<=0)$('checkpoint').classList.add('hidden');
+
+  let m=38+up.magnet*35;
+  for(let i=items.length-1;i>=0;i--){
+    let q=items[i],sx=q.x-world,d=Math.hypot(p.x+p.w*.55-sx,p.y+p.h*.45-q.y);
+    if(d<m){runScrap++;items.splice(i,1);tone(720,.03,'square',.01)}
+  }
+
+  for(let q of obs){
+    let sx=q.x-world;
+    const pad=q.type==='spikes'?5:2;
+    if(p.x+pad<sx+q.w&&p.x+p.w-pad>sx&&p.y+pad<q.y+q.h&&p.y+p.h-pad>q.y){
+      if(p.shield){
+        p.shield=0;$('shield').classList.add('hidden');q.x=-99999;tone(150,.12,'square',.02);
+      }else startDeath('hit');
+    }
+  }
+
+  if(p.y>H+18)startDeath('fall');
+}
+function bg(){
+  // Cinematic parallax background inspired by the 0.15 concept art
+  if(BG.complete){
+    const sc=Math.max(W/BG.width,H/BG.height), sw=BG.width*sc, sh=BG.height*sc;
+    const far=-((world*.035)%sw), mid=-((world*.075)%sw);
+    x.globalAlpha=.62;
+    x.drawImage(BG,far-40,-10,sw,sh);
+    x.drawImage(BG,far-40+sw,-10,sw,sh);
+    x.globalAlpha=.30;
+    x.drawImage(BG,mid,22,sw,sh);
+    x.drawImage(BG,mid+sw,22,sw,sh);
+    x.globalAlpha=1;
+  }else{x.fillStyle='#23281f';x.fillRect(0,0,W,H)}
+  // sunset haze
+  let g=x.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'rgba(24,28,50,.16)'); g.addColorStop(.55,'rgba(255,113,29,.08)'); g.addColorStop(1,'rgba(0,0,0,.32)');
+  x.fillStyle=g;x.fillRect(0,0,W,H);
+  // moving smoke plumes
+  x.fillStyle='rgba(20,18,18,.22)';
+  for(let i=0;i<5;i++){
+    let sx=((i*250-world*.045)%(W+320))-100;
+    x.beginPath();x.arc(sx,H*.48,38,0,7);x.arc(sx+28,H*.42,50,0,7);x.arc(sx+58,H*.37,34,0,7);x.fill();
+  }
+}
+function ground(){
+  if(world<START_GROUND){
+    let y=H-78;
+    x.fillStyle='#332820';x.fillRect(0,y,W,34);
+    x.fillStyle='#b96f28';x.fillRect(0,y,W,5);
+    x.fillStyle='#1a1b18';x.fillRect(0,y+34,W,H-y-34);
+    // metal panels, bolts and hazard marks
+    for(let xx=0;xx<W;xx+=72){
+      x.strokeStyle='#6c4b36';x.lineWidth=2;x.strokeRect(xx,y+6,70,26);
+      x.fillStyle='#111';x.beginPath();x.arc(xx+9,y+13,3,0,7);x.arc(xx+61,y+27,3,0,7);x.fill();
+      if((xx/72)%2===0){x.fillStyle='#b8892f';x.fillRect(xx+25,y+28,20,4)}
+    }
+  }
+}
+function platform(q){
+ let sx=q.x-world;if(sx<-500||sx>W+500)return;
+ const tops=['#c47729','#d06b2d','#cc4936','#d9a42d'];
+ x.fillStyle='#3a2c23';x.fillRect(sx,q.y,q.w,q.h);
+ x.fillStyle=tops[q.zone||0];x.fillRect(sx,q.y,q.w,5);
+ x.fillStyle='#1a1b18';x.fillRect(sx,q.y+q.h,q.w,H-q.y-q.h);
+ for(let xx=sx+8;xx<sx+q.w-8;xx+=62){
+   x.strokeStyle='#75503a';x.lineWidth=2;x.strokeRect(xx,q.y+7,58,q.h-10);
+   x.fillStyle='#111';x.beginPath();x.arc(xx+7,q.y+14,2.5,0,7);x.arc(xx+51,q.y+q.h-8,2.5,0,7);x.fill();
+ }
+ // Small hazard marks make later sectors easier to read visually.
+ if((q.zone||0)>0){
+   x.fillStyle='rgba(0,0,0,.38)';
+   for(let xx=sx+12;xx<sx+q.w-18;xx+=44)x.fillRect(xx,q.y+7,18,3);
+ }
+}
+function gear(q){
+ let sx=q.x-world;x.save();x.translate(sx,q.y);
+ x.shadowColor='#ffb300';x.shadowBlur=18;
+ x.fillStyle='#ffb31f';
+ for(let i=0;i<10;i++){x.rotate(Math.PI/5);x.fillRect(9,-3,8,6)}
+ x.beginPath();x.arc(0,0,10,0,7);x.fill();
+ x.shadowBlur=0;x.fillStyle='#5a3811';x.beginPath();x.arc(0,0,4,0,7);x.fill();
+ x.restore()
+}
+function obstacle(q){
+ let sx=q.x-world;
+ if(q.type==='spikes'){
+   x.save();x.translate(sx,q.y);
+   x.fillStyle='#b8b7ae';x.strokeStyle='#2a2927';x.lineWidth=2;
+   const n=5,sw=q.w/n;
+   for(let i=0;i<n;i++){
+     x.beginPath();x.moveTo(i*sw,q.h);x.lineTo(i*sw+sw/2,0);x.lineTo((i+1)*sw,q.h);x.closePath();x.fill();x.stroke();
+   }
+   x.fillStyle='#663d21';x.fillRect(0,q.h-4,q.w,5);x.restore();
+   return;
+ }
+ // Rusty oil barrel.
+ let gr=x.createLinearGradient(sx,q.y,sx+q.w,q.y);
+ gr.addColorStop(0,'#421713');gr.addColorStop(.5,'#b23b25');gr.addColorStop(1,'#35110f');
+ x.fillStyle=gr;x.fillRect(sx,q.y,q.w,q.h);
+ x.fillStyle='#d97828';x.fillRect(sx+2,q.y+6,q.w-4,4);x.fillRect(sx+2,q.y+q.h-10,q.w-4,4);
+ x.fillStyle='#181818';x.beginPath();x.moveTo(sx+q.w*.5,q.y+13);x.lineTo(sx+8,q.y+30);x.lineTo(sx+q.w-8,q.y+30);x.closePath();x.fill();
+ x.fillStyle='#e0a12b';x.font='bold 12px Arial';x.textAlign='center';x.fillText('!',sx+q.w/2,q.y+28);
+}
+function player(){
+  if(!p)return;
+
+  const cx=p.x+p.w/2+2;
+  const bottom=p.y+p.h;
+  const airborne=!p.on;
+
+  // Small foot shadow only.
+  x.save();
+  x.globalAlpha=airborne?.04:.15;
+  x.fillStyle='#000';
+  x.beginPath();
+  x.ellipse(cx,bottom+3,airborne?9:16,airborne?2:3,0,0,Math.PI*2);
+  x.fill();
+  x.restore();
+
+  x.save();
+  x.translate(cx,bottom);
+
+  if(state==='dying' && RUNIMG.complete && RUNIMG.naturalWidth>0){
+    const fw=560,fh=640,dw=126,dh=152;
+    x.rotate(p.deathRot);
+    x.drawImage(RUNIMG,2*fw,0,fw,fh,-dw/2,-dh+1,dw,dh);
+  }else if(airborne && JUMPIMG.complete && JUMPIMG.naturalWidth>0){
+    const fw=520,fh=640;
+    // Four clean jump poses with identical canvas size and anatomical scale.
+    let jf=0;
+    if(p.vy < -420) jf=0;
+    else if(p.vy < -80) jf=1;
+    else if(p.vy < 240) jf=2;
+    else jf=3;
+
+    // Same fixed draw box through the entire jump: no growth/shrink effect.
+    const dw=130,dh=160;
+    x.drawImage(JUMPIMG,jf*fw,0,fw,fh,-dw/2,-dh+1,dw,dh);
+  }else if(!airborne && RUNIMG.complete && RUNIMG.naturalWidth>0){
+    // Six clean full-body frames from a genuinely transparent source.
+    // No sway, rotation, stretching or generated background extraction.
+    const fw=560,fh=640;
+
+    // 0.18.6: calmer, more readable stride timing.
+    // Frames 1 and 4 are held briefly as transition poses so the legs and arms
+    // have more time to pass through the middle of the stride instead of snapping.
+    const runFrames=[0,1,1,2,3,4,4,5];
+    const cadence=7.85+(speed/760)*2.15;
+    const phase=(p.anim*cadence/12)%runFrames.length;
+    const frame=runFrames[Math.floor(phase)%runFrames.length];
+
+    // About 5% smaller than 0.18.5, still locked to the same foot baseline.
+    // No blending, no sideways sway and no vertical bobbing.
+    const dw=126,dh=152;
+    x.globalAlpha=1;
+    x.drawImage(RUNIMG,frame*fw,0,fw,fh,-dw/2,-dh+1,dw,dh);
+  }else if(PIMG.complete&&PIMG.naturalWidth>0){
+    const dw=92,dh=116;
+    x.drawImage(PIMG,-dw/2,-dh+2,dw,dh);
+  }
+
+  if(p.shield){
+    x.strokeStyle='#8bd2ff';
+    x.lineWidth=3;
+    x.beginPath();
+    x.arc(0,-61,56,0,Math.PI*2);
+    x.stroke();
+  }
+  x.restore();
+}
+function draw(){
+ bg();ground();for(let q of plats)platform(q);for(let q of items)gear(q);for(let q of obs)obstacle(q);
+ // dust and sparks behind feet
+ if(state==='play'&&p&&p.on){
+   for(let i=0;i<5;i++){
+     let px=p.x-5-Math.random()*26, py=p.y+p.h-2-Math.random()*10;
+     x.fillStyle='rgba(224,150,74,'+(0.12+Math.random()*.18)+')';x.fillRect(px,py,2+Math.random()*3,2+Math.random()*3);
+   }
+ }
+ player();
+ $('dist').textContent='MATKA '+Math.floor(world/10)+' m';$('scrap').textContent='⚙ '+runScrap
+}
+function loop(t){let dt=Math.min(.033,(t-last)/1000||0);last=t;update(dt);draw();requestAnimationFrame(loop)}requestAnimationFrame(loop);
+
+function updateWallet(){$('wallet').textContent=wallet;$('wallet2').textContent=wallet}
+function renderShop(){updateWallet();let g=$('shopGrid');g.innerHTML='';for(let id in defs){let d=defs[id],lvl=up[id],cost=d[1]*(lvl+1),r=document.createElement('div');r.className='up';r.innerHTML='<div><b>'+d[0]+' '+lvl+'/'+d[2]+'</b></div>';let b=document.createElement('button');b.className='buy';b.textContent=lvl>=d[2]?'MAX':'⚙ '+cost;b.disabled=lvl>=d[2]||wallet<cost;b.onclick=()=>{if(wallet>=cost&&up[id]<d[2]){wallet-=cost;up[id]++;persist();renderShop()}};r.appendChild(b);g.appendChild(r)}}
+$('play').onclick=reset;$('again').onclick=reset;$('shopBtn').onclick=()=>{renderShop();hide();$('shop').classList.remove('hidden')};
+$('back').onclick=$('menuBtn').onclick=()=>{hide();updateWallet();$('menu').classList.remove('hidden')};
+$('pause').onclick=()=>{if(state==='play'){state='paused';$('paused').classList.remove('hidden')}};
+$('resume').onclick=()=>{state='play';$('paused').classList.add('hidden');last=performance.now()};
+addEventListener('keydown',e=>{if(e.key===' '||e.key==='ArrowUp')jump();if(e.key==='ArrowLeft')keys.left=1;if(e.key==='ArrowRight')keys.right=1});
+addEventListener('keyup',e=>{if(e.key===' '||e.key==='ArrowUp')cutJump();if(e.key==='ArrowLeft')keys.left=0;if(e.key==='ArrowRight')keys.right=0});
+function hold(id,k){let e=$(id);e.onpointerdown=()=>keys[k]=1;e.onpointerup=e.onpointercancel=()=>keys[k]=0}
+hold('left','left');hold('right','right');
+$('jump').onpointerdown=jump;$('jump').onpointerup=$('jump').onpointercancel=cutJump;
+$('jumpButton').onpointerdown=(e)=>{e.preventDefault();jump()};
+$('jumpButton').onpointerup=$('jumpButton').onpointercancel=(e)=>{e.preventDefault();cutJump()};
+setMusic(musicOn);updateWallet();
+</script>
+</body></html>
