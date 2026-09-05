@@ -1,0 +1,15 @@
+WRECK RUNNER 0.31.1 — PROGRESSION + HAZARDS + COMBAT
+
+Replace these THREE files in the ROOT of the Wreck-runner repository:
+1. index.html
+2. assets.js
+3. menu.jpg
+
+Main changes:
+- slower first four-sector loop
+- speed increases after every full four-sector clear
+- stronger Sector 2 mechanical hazards
+- stronger Sector 3 fire/steam/molten hazards
+- Sulattamokone overheat phase at 50% HP
+- rebuilt Sulattamokone visual
+- rebuilt Wreck Pistol visual/effects
